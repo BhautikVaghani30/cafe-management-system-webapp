@@ -1,0 +1,52 @@
+// Jenkinsfile for the Frontend Application
+
+pipeline {
+    agent any
+
+    environment {
+        PROJECT_ID          = "code-with-intellij-gemini"
+        GCP_REGION          = "us-central1"
+        FRONTEND_BUCKET     = "gs://www-cafe-management-system-your-unique-identifier" // <-- IMPORTANT: CHANGE THIS
+        GCP_CREDENTIALS_ID  = "gcp-jenkins-creds"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                echo "Checking out source code..."
+                checkout scm
+            }
+        }
+
+        stage('Build Angular App') {
+            steps {
+                // This 'dir' step tells Jenkins to run these commands inside the 'frontend' folder
+                dir('frontend') { 
+                    echo "Installing npm packages and building Angular app for production..."
+                    sh 'npm install'
+                    sh 'ng build --configuration production'
+                }
+            }
+        }
+
+        stage('Deploy to Cloud Storage') {
+            steps {
+                dir('frontend') {
+                    echo "Deploying frontend to Cloud Storage bucket: ${FRONTEND_BUCKET}"
+                    withCredentials([file(credentialsId: GCP_CREDENTIALS_ID, variable: 'GCP_KEY_FILE')]) {
+                        sh "gcloud auth activate-service-account --key-file=${GCP_KEY_FILE}"
+                        // This command syncs the built app from the 'dist' folder to your bucket
+                        sh "gcloud storage rsync dist/cafe-management-system/browser/ ${FRONTEND_BUCKET} -d -r"
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            echo "Cleaning up workspace..."
+            cleanWs()
+        }
+    }
+}
