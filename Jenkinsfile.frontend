@@ -23,6 +23,7 @@ pipeline {
                 // This 'dir' step tells Jenkins to run these commands inside the 'frontend' folder
                 dir('frontend') { 
                     echo "Installing npm packages and building Angular app for production..."
+                    sh 'npm cache clean --force'
                     sh 'npm install'
                     sh 'ng build --configuration production'
                 }
