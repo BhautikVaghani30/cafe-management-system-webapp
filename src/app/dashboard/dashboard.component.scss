@@ -1,0 +1,87 @@
+
+
+body {
+  position: relative;
+  padding: 5px;
+  height: 100%;
+  width: 100%;
+  // width: 75%fit-content;
+}
+.blacky {
+  background-color: black;
+  color: white;
+  padding: 20px;
+  text-align: center;
+  font-size: large;
+}
+
+.row {
+  display: flex;
+  justify-content: space-around;
+  margin-bottom: 20px;
+}
+
+.column {
+  flex: 1;
+  margin: 0 10px;
+}
+
+.card {
+  background-color: #fefefe !important;
+  padding: 20px;
+  border-radius: 10px;
+  width: 100%;
+  box-shadow: rgb(210, 210, 210) 0px 20px 30px -10px;
+  transition: all 0.3s ease-in-out;
+}
+.card:hover {
+  box-shadow: rgb(204, 219, 232) 3px 3px 6px 0px inset,
+    rgba(255, 255, 255, 0.5) -3px -3px 6px 1px inset;
+}
+
+.title {
+  font-size: 15px;
+  margin-bottom: 10px;
+}
+
+.number {
+  font-size: 25px;
+  margin-bottom: 10px;
+}
+
+.button {
+  background-color: black;
+  color: white;
+  border: none;
+  padding: 10px 15px;
+  text-align: center;
+  text-decoration: none;
+  display: inline-block;
+  font-size: 13px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.button:hover {
+  background-color: #555;
+}
+
+@media screen and (max-width: 600) {
+  .column {
+    width: 100%;
+    display: block;
+  }
+
+  .title {
+    padding-top: 10px;
+    color: #1e1d1d;
+    font-size: 11px;
+    text-align: center !important;
+  }
+
+  .number {
+    color: #1e1d1d;
+    padding-bottom: 10px;
+    text-align: center !important;
+  }
+}
