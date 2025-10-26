@@ -46,7 +46,8 @@ pipeline {
                 // Run build steps inside the 'frontend' directory where package.json is located.
                 dir('frontend') { 
                     echo "CoreCICD :: Build : Installing npm dependencies..."
-                    sh 'npm install'
+                    sh 'npm cache clean --force'
+                    sh 'npm install --cache .npm'
                     
                     echo "CoreCICD :: Build : Building Angular application for production..."
                     // Using npm run build is best practice as it uses the command from package.json
