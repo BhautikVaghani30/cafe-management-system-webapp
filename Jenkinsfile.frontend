@@ -16,64 +16,60 @@
 
 // Jenkinsfile for the Frontend Application
 pipeline {
-    // *** FIX: Use a single, powerful Docker agent for the entire pipeline. ***
-    // The google/cloud-sdk image contains git, node, npm, and gcloud.
-    // This simplifies the pipeline by using one shared workspace for all stages,
-    // eliminating the need for stash/unstash and complex agent definitions.
-    agent {
-        docker {
-            image 'google/cloud-sdk:latest'
-        }
-    }
+    agent any // A top-level agent is needed for the post block to work correctly.
 
     environment {
         // --- Configuration: Set these values for your environment ---
         PROJECT_ID         = "code-with-intellij-gemini"
         FRONTEND_BUCKET    = "gs://www-cafe-management-system-your-unique-identifier" // <-- IMPORTANT: CHANGE THIS
         GCP_CREDENTIALS_ID = "gcp-jenkins-creds"
-
+ 
         // The output directory of the 'ng build' command, relative to the 'frontend' folder.
         ANGULAR_BUILD_DIR  = "dist/Frontend/"
-
-        // --- FIX: Set all configuration variables needed for the pipeline here. ---
-        // This prevents permission errors for both npm and gcloud.
-        NPM_CONFIG_CACHE = "frontend/npm-cache"
-        CLOUDSDK_CONFIG  = "gcloud-config"
     }
 
     stages {
-        // Stage 1: Checkout code
         stage('Checkout') {
-            steps {
-                echo "CoreCICD :: Checkout : Cleaning workspace and checking out source code..."
-                cleanWs()
-                checkout scm
-            }
+             steps {
+                 echo "CoreCICD :: Checkout : Cleaning workspace and checking out source code..."
+                 cleanWs()
+                 checkout scm
+             }
         }
 
-        // Stage 2: Build the Angular application
         stage('Build Angular App') {
+            // This stage uses a Node.js image, which is optimized for building JS/TS projects.
+            agent {
+                docker { image 'node:16-slim' }
+            }
             steps {
-                // All commands in this stage run relative to the 'frontend' directory.
-                dir('frontend') {
+                // Run build steps inside the 'frontend' directory where package.json is located.
+                dir('frontend') { 
                     echo "CoreCICD :: Build : Installing npm dependencies..."
                     sh 'npm install'
-
+                    
                     echo "CoreCICD :: Build : Building Angular application for production..."
+                    // Using npm run build is best practice as it uses the command from package.json
                     sh 'npm run build'
                 }
+                // Stash the build artifacts to use in the next stage.
+                stash name: 'angular-app', includes: "frontend/${ANGULAR_BUILD_DIR}/**"
             }
         }
 
-        // Stage 3: Deploy the built application to Google Cloud Storage
         stage('Deploy to Cloud Storage') {
+            // This stage uses the Google Cloud SDK image, which has the 'gcloud' command.
+            agent {
+                docker { image 'google/cloud-sdk:latest' }
+            }
             steps {
-                // The 'dist' folder from the previous stage is already available in the workspace.
+                // Unstash the build artifacts from the previous stage.
+                unstash 'angular-app'
                 echo "CoreCICD :: Deploy : Deploying frontend to Cloud Storage bucket: ${FRONTEND_BUCKET}"
                 withCredentials([file(credentialsId: GCP_CREDENTIALS_ID, variable: 'GCP_KEY_FILE')]) {
                     echo "CoreCICD :: Deploy : Authenticating with Google Cloud..."
                     sh 'gcloud auth activate-service-account --key-file=$GCP_KEY_FILE'
-
+   
                     echo "CoreCICD :: Deploy : Syncing build artifacts to the bucket..."
                     sh "gcloud storage rsync frontend/${ANGULAR_BUILD_DIR} ${FRONTEND_BUCKET} --delete-unmatched-destination-objects --recursive"
                 }
@@ -82,11 +78,9 @@ pipeline {
     }
 
     post {
-        success {
-            echo "CoreCICD :: Post-Build : SUCCESS : Pipeline completed successfully."
-        }
-        failure {
-            echo "CoreCICD :: Post-Build : FAILURE : Pipeline failed. Please review the logs."
+        always {
+            echo "CoreCICD :: Cleanup : Cleaning up Jenkins workspace..."
+            cleanWs()
         }
     }
 }
