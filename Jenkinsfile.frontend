@@ -1,18 +1,18 @@
 /*
-  * Copyright 2025 com.core
-  *
-  * Licensed under the Apache License, Version 2.0 (the "License");
-  * you may not use this file except in compliance with the License.
-  * You may obtain a copy of the License at
-  *
-  *     http://www.apache.org/licenses/LICENSE-2.0
-  *
-  * Unless required by applicable law or agreed to in writing, software
-  * distributed under the License is distributed on an "AS IS" BASIS,
-  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-  * See the License for the specific language governing permissions and
-  * limitations under the License.
-  */
+ * Copyright 2025 com.core
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
  
  // Jenkinsfile for the Frontend Application
 pipeline {
@@ -41,6 +41,12 @@ pipeline {
             agent {
                 docker { image 'node:16-slim' }
             }
+            environment {
+                // *** FIX: Set the npm cache to a writable directory within the workspace ***
+                // This prevents npm from trying to write to a root-owned directory (/.npm)
+                // and solves the EACCES permission error.
+                NPM_CONFIG_CACHE = "frontend/npm-cache"
+            }
              steps {
                  // Run build steps inside the 'frontend' directory where package.json is located.
                  dir('frontend') { 
@@ -60,15 +66,16 @@ pipeline {
                 docker { image 'google/cloud-sdk:latest' }
             }
              steps {
-                 dir('frontend') { // Run inside the 'frontend' directory
-                    echo "CoreCICD :: Deploy : Deploying frontend to Cloud Storage bucket: ${FRONTEND_BUCKET}"
-                    withCredentials([file(credentialsId: GCP_CREDENTIALS_ID, variable: 'GCP_KEY_FILE')]) {
-                        echo "CoreCICD :: Deploy : Authenticating with Google Cloud..."
-                        sh 'gcloud auth activate-service-account --key-file=$GCP_KEY_FILE'
-    
-                        echo "CoreCICD :: Deploy : Syncing build artifacts to the bucket..."
-                        sh "gcloud storage rsync ${ANGULAR_BUILD_DIR} ${FRONTEND_BUCKET} --delete-unmatched-destination-objects --recursive"
-                    }
+                 // The 'gcloud' command needs access to the build artifacts from the previous stage.
+                 // Jenkins automatically makes the workspace available across stages.
+                 echo "CoreCICD :: Deploy : Deploying frontend to Cloud Storage bucket: ${FRONTEND_BUCKET}"
+                 withCredentials([file(credentialsId: GCP_CREDENTIALS_ID, variable: 'GCP_KEY_FILE')]) {
+                     echo "CoreCICD :: Deploy : Authenticating with Google Cloud..."
+                     sh 'gcloud auth activate-service-account --key-file=$GCP_KEY_FILE'
+ 
+                     echo "CoreCICD :: Deploy : Syncing build artifacts to the bucket..."
+                     // We reference the build directory relative to the root of the workspace.
+                     sh "gcloud storage rsync frontend/${ANGULAR_BUILD_DIR} ${FRONTEND_BUCKET} --delete-unmatched-destination-objects --recursive"
                  }
              }
          }
