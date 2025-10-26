@@ -52,9 +52,10 @@ pipeline {
                     echo "CoreCICD :: Build : Building Angular application for production..."
                     // Using npm run build is best practice as it uses the command from package.json
                     sh 'npm run build'
+                    
+                    // Stash the build artifacts to use in the next stage.
+                    stash name: 'angular-app', includes: "${ANGULAR_BUILD_DIR}/**"
                 }
-                // Stash the build artifacts to use in the next stage.
-                stash name: 'angular-app', includes: "frontend/${ANGULAR_BUILD_DIR}/**"
             }
         }
 
@@ -72,7 +73,7 @@ pipeline {
                     sh 'gcloud auth activate-service-account --key-file=$GCP_KEY_FILE'
    
                     echo "CoreCICD :: Deploy : Syncing build artifacts to the bucket..."
-                    sh "gcloud storage rsync frontend/${ANGULAR_BUILD_DIR} ${FRONTEND_BUCKET} --delete-unmatched-destination-objects --recursive"
+                    sh "gcloud storage rsync ${ANGULAR_BUILD_DIR} ${FRONTEND_BUCKET} --delete-unmatched-destination-objects --recursive"
                 }
             }
         }
