@@ -3,8 +3,8 @@
   "version": "0.0.0",
   "scripts": {
     "ng": "ng",
-    "start": "set NODE_OPTIONS=--openssl-legacy-provider && ng serve",
-    "build": "set NODE_OPTIONS=--openssl-legacy-provider && ng build",
+    "start": "ng serve",
+    "build": "ng build --prod",
     "test": "ng test",
     "lint": "ng lint",
     "e2e": "ng e2e"
@@ -28,7 +28,7 @@
     "@capacitor/ios": "^5.7.0",
     "@ionic/angular": "^6.7.5",
     "@types/file-saver": "^2.0.5",
-    "capacitor-razorpay": "git+https://github.com/razorpay/razorpay-capacitor.git",
+    "capacitor-razorpay": "1.2.0",
     "file-saver": "^2.0.5",
     "jwt-decode": "^3.1.2",
     "ngx-ui-loader": "^11.0.0",
@@ -41,7 +41,7 @@
     "@angular-devkit/build-angular": "^12.2.14",
     "@angular/cli": "^12.2.14",
     "@angular/compiler-cli": "^12.2.14",
-    "@ionic/angular-toolkit": "latest",
+    "@ionic/angular-toolkit": "^5.0.0",
     "@types/jasmine": "^3.10.0",
     "@types/node": "^16.11.15",
     "codelyzer": "^6.0.0",
@@ -55,6 +55,9 @@
     "protractor": "^7.0.0",
     "ts-node": "^10.4.0",
     "tslint": "^6.1.0",
-    "typescript": "^4.3.5"
+    "typescript": "4.3.5"
+  },
+  "overrides": {
+    "typescript": "4.3.5"
   }
 }
