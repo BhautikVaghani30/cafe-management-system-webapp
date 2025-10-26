@@ -1,79 +1,109 @@
 /*
-  * Copyright 2025 com.core
-  *
-  * Licensed under the Apache License, Version 2.0 (the "License");
-  * you may not use this file except in compliance with the License.
-  * You may obtain a copy of the License at
-  *
-  *     http://www.apache.org/licenses/LICENSE-2.0
-  *
-  * Unless required by applicable law or agreed to in writing, software
-  * distributed under the License is distributed on an "AS IS" BASIS,
-  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-  * See the License for the specific language governing permissions and
-  * limitations under the License.
-  */
- 
- // Jenkinsfile for the Frontend Application
- pipeline {
-     // Use a Docker agent to ensure a consistent build environment with all tools pre-installed.
-     agent {
-         docker {
-             image 'google/cloud-sdk:latest'
-         }
-     }
-     environment {
-         // --- Configuration: Set these values for your environment ---
-         PROJECT_ID         = "code-with-intellij-gemini"
-         FRONTEND_BUCKET    = "gs://www-cafe-management-system-your-unique-identifier" // <-- IMPORTANT: CHANGE THIS to your unique bucket name
-         GCP_CREDENTIALS_ID = "gcp-jenkins-creds"
-         
-         // The output directory of the 'ng build' command.
-         ANGULAR_BUILD_DIR  = "dist/Frontend/"
-     }
- 
-     stages {
-         stage('Checkout') {
-             steps {
-                 echo "CoreCICD :: Checkout : Checking out source code from SCM..."
-                 checkout scm
-             }
-         }
- 
-         stage('Build Angular App') {
-             steps {
-                 // Run build steps inside the 'frontend' directory where package.json is located.
-                 dir('frontend') {
-                     echo "CoreCICD :: Build : Installing npm dependencies..."
-                     sh 'npm cache clean --force'
-                     sh 'npm install'
- 
-                     echo "CoreCICD :: Build : Building Angular application for production..."
-                     sh 'npm run build'
-                 }
-             }
-         }
- 
-         stage('Deploy to Cloud Storage') {
-             steps {
-                 dir('frontend') { // Run inside the 'frontend' directory
-                    echo "CoreCICD :: Deploy : Deploying frontend to Cloud Storage bucket: ${FRONTEND_BUCKET}"
-                    withCredentials([file(credentialsId: GCP_CREDENTIALS_ID, variable: 'GCP_KEY_FILE')]) {
-                        echo "CoreCICD :: Deploy : Authenticating with Google Cloud..."
-                        sh 'gcloud auth activate-service-account --key-file=$GCP_KEY_FILE'
-    
-                        echo "CoreCICD :: Deploy : Syncing build artifacts to the bucket..."
-                        sh "gcloud storage rsync ${ANGULAR_BUILD_DIR} ${FRONTEND_BUCKET} --delete-unmatched-destination-objects --recursive"
-                    }
-                 }
-             }
-         }
-     }
- 
-     post {
-         always {
-             echo "CoreCICD :: Cleanup : Cleaning up Jenkins workspace..."
-             cleanWs()
-         }
-     }
+ * Copyright 2025 com.core
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+// Jenkinsfile for the Frontend Application
+pipeline {
+    // Use a Docker agent to ensure a consistent build environment with all tools pre-installed.
+    agent {
+        docker {
+            image 'google/cloud-sdk:latest'
+        }
+    }
+
+    environment {
+        // --- Configuration: Set these values for your environment ---
+        PROJECT_ID         = "code-with-intellij-gemini"
+        FRONTEND_BUCKET    = "gs://www-cafe-management-system-your-unique-identifier" // <-- IMPORTANT: CHANGE THIS to your unique bucket name
+        GCP_CREDENTIALS_ID = "gcp-jenkins-creds"
+        
+        // The output directory of the 'ng build' command.
+        ANGULAR_BUILD_DIR  = "dist/Frontend/"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                echo "CoreCICD :: Checkout : Checking out source code from SCM..."
+                checkout scm
+            }
+        }
+
+        stage('Build Angular App') {
+            steps {
+                // Run build steps inside the 'frontend' directory where package.json is located.
+                dir('frontend') {
+                   script {
+                       try {
+                           echo "CoreCICD :: Build : Installing npm dependencies..."
+                           sh '''
+                               npm cache clean --force
+                               npm install
+                           '''
+
+                           echo "CoreCICD :: Build : Building Angular application for production..."
+                           sh 'npm run build'
+                       } catch (e) {
+                           echo "CoreCICD :: Build : ERROR : Angular build failed. See logs for details."
+                           error "Build stage failed: ${e.message}"
+                       }
+                   }
+                }
+            }
+        }
+
+        stage('Deploy to Cloud Storage') {
+            steps {
+                dir('frontend') { // Run inside the 'frontend' directory
+                   script {
+                       try {
+                           echo "CoreCICD :: Deploy : Deploying frontend to Cloud Storage bucket: ${FRONTEND_BUCKET}"
+                           withCredentials([file(credentialsId: GCP_CREDENTIALS_ID, variable: 'GCP_KEY_FILE')]) {
+                               echo "CoreCICD :: Deploy : Authenticating with Google Cloud..."
+                               sh 'gcloud auth activate-service-account --key-file=$GCP_KEY_FILE'
+           
+                               echo "CoreCICD :: Deploy : Syncing build artifacts to the bucket..."
+                               // --delete-unmatched-destination-objects: Deletes old files in the bucket that are not in the source.
+                               // --recursive: Ensures all subdirectories and files are copied.
+                               sh "gcloud storage rsync '${ANGULAR_BUILD_DIR}' '${FRONTEND_BUCKET}' --delete-unmatched-destination-objects --recursive"
+                           }
+                       } catch (e) {
+                           echo "CoreCICD :: Deploy : ERROR : Deployment to Cloud Storage failed."
+                           error "Deploy stage failed: ${e.message}"
+                       }
+                   }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            echo "CoreCICD :: Post-Build : Cleaning up Jenkins workspace..."
+            cleanWs()
+        }
+        success {
+            echo "CoreCICD :: Post-Build : SUCCESS : Pipeline completed successfully."
+            // Example: sh 'slack-notify.sh "Build successful!"'
+        }
+        failure {
+            echo "CoreCICD :: Post-Build : FAILURE : Pipeline failed. Please review the logs."
+            // Example: mail to: 'dev-team@example.com', subject: 'Build Failed', body: '...'
+        }
+        unstable {
+            echo "CoreCICD :: Post-Build : UNSTABLE : Pipeline is unstable (e.g., tests passed but with failures)."
+        }
+    }
 }
