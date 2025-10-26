@@ -16,7 +16,9 @@
  
 // Jenkinsfile for the Frontend Application
 pipeline {
-    agent any // A top-level agent is needed for the post block to work correctly.
+    // Define the agent at the top level. This will be the default agent.
+    // Individual stages can override this if they need a different environment.
+    agent any
  
     environment {
         // --- Configuration: Set these values for your environment ---
@@ -29,49 +31,56 @@ pipeline {
     }
  
     stages {
+        // Stage 1: Checkout code once at the beginning.
         stage('Checkout') {
              steps {
-                 echo "CoreCICD :: Checkout : Checking out source code from SCM..."
+                 echo "CoreCICD :: Checkout : Cleaning workspace and checking out source code..."
+                 // Clean the workspace before checkout to ensure a fresh start.
+                 cleanWs()
                  checkout scm
              }
          }
   
-         stage('Build Angular App') {
+        // Stage 2: Build the Angular application.
+        stage('Build Angular App') {
+            // Override the agent for this stage to use a specific Node.js environment.
             agent {
                 docker { image 'node:16-slim' }
             }
             environment {
-                // This prevents npm from trying to write to a root-owned directory (/.npm)
+                // Set the npm cache to a writable directory within the workspace to prevent permission errors.
                 NPM_CONFIG_CACHE = "frontend/npm-cache"
             }
              steps {
+                 // All commands in this stage run relative to the 'frontend' directory.
                  dir('frontend') { 
                     echo "CoreCICD :: Build : Installing npm dependencies..."
                      sh 'npm install'
                      
                      echo "CoreCICD :: Build : Building Angular application for production..."
                      sh 'npm run build'
-
-                     echo "CoreCICD :: Build : Stashing build artifacts for the deploy stage..."
-                     // Stash the build output so it can be used in the next stage.
-                     stash name: 'angular-app', includes: "${ANGULAR_BUILD_DIR}/**"
                  }
+                 
+                 echo "CoreCICD :: Build : Stashing build artifacts for the deploy stage..."
+                 // *** FIX: Use the full path from the workspace root for stashing. ***
+                 // This ensures Jenkins finds the files created by the build step.
+                 stash name: 'angular-app', includes: "frontend/${ANGULAR_BUILD_DIR}/**"
              }
          }
   
-         stage('Deploy to Cloud Storage') {
+        // Stage 3: Deploy the built application to Google Cloud Storage.
+        stage('Deploy to Cloud Storage') {
+            // Override the agent for this stage to use the Google Cloud SDK environment.
             agent {
                 docker { image 'google/cloud-sdk:latest' }
             }
             environment {
-                // *** FIX: Set the gcloud config to a writable directory within the workspace ***
-                // This prevents gcloud from trying to write to a root-owned directory (/.config)
-                // and solves the "Permission denied" error.
+                // Set the gcloud config to a writable directory to prevent permission errors.
                 CLOUDSDK_CONFIG = "gcloud-config"
             }
              steps {
                 echo "CoreCICD :: Deploy : Unstashing build artifacts..."
-                // Unstash the files that were saved in the previous stage.
+                // Restore the files that were saved in the previous stage.
                 unstash 'angular-app'
 
                 echo "CoreCICD :: Deploy : Deploying frontend to Cloud Storage bucket: ${FRONTEND_BUCKET}"
@@ -80,6 +89,7 @@ pipeline {
                     sh 'gcloud auth activate-service-account --key-file=$GCP_KEY_FILE'
 
                     echo "CoreCICD :: Deploy : Syncing build artifacts to the bucket..."
+                    // The path is now relative to the current workspace, as unstash restores it here.
                     sh "gcloud storage rsync ${ANGULAR_BUILD_DIR} ${FRONTEND_BUCKET} --delete-unmatched-destination-objects --recursive"
                 }
              }
@@ -87,9 +97,13 @@ pipeline {
      }
   
      post {
-         always {
-             echo "CoreCICD :: Cleanup : Cleaning up Jenkins workspace..."
-             cleanWs()
+         // The 'always' block is now redundant because cleanWs() is in the Checkout stage.
+         // This is a cleaner pattern.
+         success {
+             echo "CoreCICD :: Post-Build : SUCCESS : Pipeline completed successfully."
+         }
+         failure {
+             echo "CoreCICD :: Post-Build : FAILURE : Pipeline failed. Please review the logs."
          }
      }
 }
