@@ -15,34 +15,26 @@
   */
  
  // Jenkinsfile for the Frontend Application
- 
  pipeline {
-     agent any
      // Use a Docker agent to ensure a consistent build environment with all tools pre-installed.
      agent {
          docker {
              image 'google/cloud-sdk:latest'
          }
      }
- 
      environment {
-         PROJECT_ID          = "code-with-intellij-gemini"
-         GCP_REGION          = "us-central1"
-         FRONTEND_BUCKET     = "gs://www-cafe-management-system-your-unique-identifier" // <-- IMPORTANT: CHANGE THIS
-         GCP_CREDENTIALS_ID  = "gcp-jenkins-creds"
          // --- Configuration: Set these values for your environment ---
          PROJECT_ID         = "code-with-intellij-gemini"
          FRONTEND_BUCKET    = "gs://www-cafe-management-system-your-unique-identifier" // <-- IMPORTANT: CHANGE THIS to your unique bucket name
          GCP_CREDENTIALS_ID = "gcp-jenkins-creds"
          
          // The output directory of the 'ng build' command.
-         ANGULAR_BUILD_DIR  = "dist/cafe-management-system/browser/"
+         ANGULAR_BUILD_DIR  = "dist/Frontend/"
      }
  
      stages {
          stage('Checkout') {
              steps {
-                 echo "Checking out source code..."
                  echo "CoreCICD :: Checkout : Checking out source code from SCM..."
                  checkout scm
              }
@@ -50,9 +42,6 @@
  
          stage('Build Angular App') {
              steps {
-                 // This 'dir' step tells Jenkins to run these commands inside the 'frontend' folder
-                 dir('frontend') { 
-                     echo "Installing npm packages and building Angular app for production..."
                  // Run build steps inside the 'frontend' directory where package.json is located.
                  dir('frontend') {
                      echo "CoreCICD :: Build : Installing npm dependencies..."
@@ -60,31 +49,22 @@
                      sh 'npm install'
  
                      echo "CoreCICD :: Build : Building Angular application for production..."
-                     sh 'ng build --configuration production'
+                     sh 'npm run build'
                  }
              }
          }
  
          stage('Deploy to Cloud Storage') {
              steps {
-                 dir('frontend') {
-                     echo "Deploying frontend to Cloud Storage bucket: ${FRONTEND_BUCKET}"
-                     withCredentials([file(credentialsId: GCP_CREDENTIALS_ID, variable: 'GCP_KEY_FILE')]) {
-                         sh "gcloud auth activate-service-account --key-file=${GCP_KEY_FILE}"
-                         // This command syncs the built app from the 'dist' folder to your bucket
-                         sh "gcloud storage rsync dist/cafe-management-system/browser/ ${FRONTEND_BUCKET} -d -r"
-                     }
-                 echo "CoreCICD :: Deploy : Deploying frontend to Cloud Storage bucket: ${FRONTEND_BUCKET}"
-                 withCredentials([file(credentialsId: GCP_CREDENTIALS_ID, variable: 'GCP_KEY_FILE')]) {
-                     echo "CoreCICD :: Deploy : Authenticating with Google Cloud..."
-                     // Use single quotes to prevent Groovy interpolation warnings with secrets.
-                     sh 'gcloud auth activate-service-account --key-file=$GCP_KEY_FILE'
- 
-                     echo "CoreCICD :: Deploy : Syncing build artifacts to the bucket..."
-                     // Syncs the built app to the GCS bucket.
-                     // --delete-unmatched-destination-objects: Deletes old files in the bucket.
-                     // --recursive: Copies files recursively.
-                     sh "gcloud storage rsync ${ANGULAR_BUILD_DIR} ${FRONTEND_BUCKET} --delete-unmatched-destination-objects --recursive"
+                 dir('frontend') { // Run inside the 'frontend' directory
+                    echo "CoreCICD :: Deploy : Deploying frontend to Cloud Storage bucket: ${FRONTEND_BUCKET}"
+                    withCredentials([file(credentialsId: GCP_CREDENTIALS_ID, variable: 'GCP_KEY_FILE')]) {
+                        echo "CoreCICD :: Deploy : Authenticating with Google Cloud..."
+                        sh 'gcloud auth activate-service-account --key-file=$GCP_KEY_FILE'
+    
+                        echo "CoreCICD :: Deploy : Syncing build artifacts to the bucket..."
+                        sh "gcloud storage rsync ${ANGULAR_BUILD_DIR} ${FRONTEND_BUCKET} --delete-unmatched-destination-objects --recursive"
+                    }
                  }
              }
          }
@@ -92,8 +72,8 @@
  
      post {
          always {
-             echo "Cleaning up workspace..."
              echo "CoreCICD :: Cleanup : Cleaning up Jenkins workspace..."
              cleanWs()
          }
      }
+}
