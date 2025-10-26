@@ -14,17 +14,17 @@
  * limitations under the License.
  */
  
- // Jenkinsfile for the Frontend Application
+// Jenkinsfile for the Frontend Application
 pipeline {
     agent any // A top-level agent is needed for the post block to work correctly.
  
     environment {
         // --- Configuration: Set these values for your environment ---
         PROJECT_ID         = "code-with-intellij-gemini"
-        FRONTEND_BUCKET    = "gs://www-cafe-management-system-your-unique-identifier" // <-- IMPORTANT: CHANGE THIS to your unique bucket name
+        FRONTEND_BUCKET    = "gs://www-cafe-management-system-your-unique-identifier" // <-- IMPORTANT: CHANGE THIS
         GCP_CREDENTIALS_ID = "gcp-jenkins-creds"
  
-        // The output directory of the 'ng build' command.
+        // The output directory of the 'ng build' command, relative to the 'frontend' folder.
         ANGULAR_BUILD_DIR  = "dist/Frontend/"
     }
  
@@ -37,46 +37,51 @@ pipeline {
          }
   
          stage('Build Angular App') {
-            // This stage uses a Node.js image, which is optimized for building JS/TS projects.
             agent {
                 docker { image 'node:16-slim' }
             }
             environment {
-                // *** FIX: Set the npm cache to a writable directory within the workspace ***
                 // This prevents npm from trying to write to a root-owned directory (/.npm)
-                // and solves the EACCES permission error.
                 NPM_CONFIG_CACHE = "frontend/npm-cache"
             }
              steps {
-                 // Run build steps inside the 'frontend' directory where package.json is located.
                  dir('frontend') { 
                     echo "CoreCICD :: Build : Installing npm dependencies..."
                      sh 'npm install'
                      
                      echo "CoreCICD :: Build : Building Angular application for production..."
-                    // Using npm run build is best practice as it uses the command from package.json
                      sh 'npm run build'
+
+                     echo "CoreCICD :: Build : Stashing build artifacts for the deploy stage..."
+                     // Stash the build output so it can be used in the next stage.
+                     stash name: 'angular-app', includes: "${ANGULAR_BUILD_DIR}/**"
                  }
              }
          }
   
          stage('Deploy to Cloud Storage') {
-            // This stage uses the Google Cloud SDK image, which has the 'gcloud' command.
             agent {
                 docker { image 'google/cloud-sdk:latest' }
             }
+            environment {
+                // *** FIX: Set the gcloud config to a writable directory within the workspace ***
+                // This prevents gcloud from trying to write to a root-owned directory (/.config)
+                // and solves the "Permission denied" error.
+                CLOUDSDK_CONFIG = "gcloud-config"
+            }
              steps {
-                 // The 'gcloud' command needs access to the build artifacts from the previous stage.
-                 // Jenkins automatically makes the workspace available across stages.
-                 echo "CoreCICD :: Deploy : Deploying frontend to Cloud Storage bucket: ${FRONTEND_BUCKET}"
-                 withCredentials([file(credentialsId: GCP_CREDENTIALS_ID, variable: 'GCP_KEY_FILE')]) {
-                     echo "CoreCICD :: Deploy : Authenticating with Google Cloud..."
-                     sh 'gcloud auth activate-service-account --key-file=$GCP_KEY_FILE'
- 
-                     echo "CoreCICD :: Deploy : Syncing build artifacts to the bucket..."
-                     // We reference the build directory relative to the root of the workspace.
-                     sh "gcloud storage rsync frontend/${ANGULAR_BUILD_DIR} ${FRONTEND_BUCKET} --delete-unmatched-destination-objects --recursive"
-                 }
+                echo "CoreCICD :: Deploy : Unstashing build artifacts..."
+                // Unstash the files that were saved in the previous stage.
+                unstash 'angular-app'
+
+                echo "CoreCICD :: Deploy : Deploying frontend to Cloud Storage bucket: ${FRONTEND_BUCKET}"
+                withCredentials([file(credentialsId: GCP_CREDENTIALS_ID, variable: 'GCP_KEY_FILE')]) {
+                    echo "CoreCICD :: Deploy : Authenticating with Google Cloud..."
+                    sh 'gcloud auth activate-service-account --key-file=$GCP_KEY_FILE'
+
+                    echo "CoreCICD :: Deploy : Syncing build artifacts to the bucket..."
+                    sh "gcloud storage rsync ${ANGULAR_BUILD_DIR} ${FRONTEND_BUCKET} --delete-unmatched-destination-objects --recursive"
+                }
              }
          }
      }
