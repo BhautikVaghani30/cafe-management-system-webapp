@@ -16,11 +16,14 @@
 
 // Jenkinsfile for the Frontend Application
 pipeline {
-    // Define a top-level agent as 'none'. This ensures all stages share the same
-    // workspace, which is critical for passing artifacts (like the 'dist' folder)
-    // from one stage to the next. Each stage will define its own environment.
+    // *** FIX: Use a single, powerful Docker agent for the entire pipeline. ***
+    // The google/cloud-sdk image contains git, node, npm, and gcloud.
+    // This simplifies the pipeline by using one shared workspace for all stages,
+    // eliminating the need for stash/unstash and complex agent definitions.
     agent {
-        none
+        docker {
+            image 'google/cloud-sdk:latest'
+        }
     }
 
     environment {
@@ -31,31 +34,25 @@ pipeline {
 
         // The output directory of the 'ng build' command, relative to the 'frontend' folder.
         ANGULAR_BUILD_DIR  = "dist/Frontend/"
+
+        // --- FIX: Set all configuration variables needed for the pipeline here. ---
+        // This prevents permission errors for both npm and gcloud.
+        NPM_CONFIG_CACHE = "frontend/npm-cache"
+        CLOUDSDK_CONFIG  = "gcloud-config"
     }
 
     stages {
-        // Stage 1: Checkout code once at the beginning.
+        // Stage 1: Checkout code
         stage('Checkout') {
-            // This stage runs on any available Jenkins agent.
-            agent { any } // *** FIX: Corrected syntax from 'agent any' to 'agent { any }' ***
             steps {
                 echo "CoreCICD :: Checkout : Cleaning workspace and checking out source code..."
-                // Clean the workspace before checkout to ensure a fresh start.
                 cleanWs()
                 checkout scm
             }
         }
 
-        // Stage 2: Build the Angular application.
+        // Stage 2: Build the Angular application
         stage('Build Angular App') {
-            // This stage runs inside a Node.js Docker container but uses the same workspace.
-            agent {
-                docker { image 'node:16-slim' }
-            }
-            environment {
-                // Set the npm cache to a writable directory within the workspace to prevent permission errors.
-                NPM_CONFIG_CACHE = "frontend/npm-cache"
-            }
             steps {
                 // All commands in this stage run relative to the 'frontend' directory.
                 dir('frontend') {
@@ -68,26 +65,16 @@ pipeline {
             }
         }
 
-        // Stage 3: Deploy the built application to Google Cloud Storage.
+        // Stage 3: Deploy the built application to Google Cloud Storage
         stage('Deploy to Cloud Storage') {
-            // This stage runs inside a Google Cloud SDK container in the same workspace.
-            agent {
-                docker { image 'google/cloud-sdk:latest' }
-            }
-            environment {
-                // Set the gcloud config to a writable directory to prevent permission errors.
-                CLOUDSDK_CONFIG = "gcloud-config"
-            }
             steps {
-                // Because we are using the same workspace, the 'dist' folder from the
-                // previous stage is already here. No stash/unstash needed.
+                // The 'dist' folder from the previous stage is already available in the workspace.
                 echo "CoreCICD :: Deploy : Deploying frontend to Cloud Storage bucket: ${FRONTEND_BUCKET}"
                 withCredentials([file(credentialsId: GCP_CREDENTIALS_ID, variable: 'GCP_KEY_FILE')]) {
                     echo "CoreCICD :: Deploy : Authenticating with Google Cloud..."
                     sh 'gcloud auth activate-service-account --key-file=$GCP_KEY_FILE'
 
                     echo "CoreCICD :: Deploy : Syncing build artifacts to the bucket..."
-                    // The path is now relative to the workspace root.
                     sh "gcloud storage rsync frontend/${ANGULAR_BUILD_DIR} ${FRONTEND_BUCKET} --delete-unmatched-destination-objects --recursive"
                 }
             }
@@ -95,7 +82,6 @@ pipeline {
     }
 
     post {
-        // This post block will run on the agent defined in the last executed stage.
         success {
             echo "CoreCICD :: Post-Build : SUCCESS : Pipeline completed successfully."
         }
