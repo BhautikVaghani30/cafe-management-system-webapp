@@ -16,12 +16,10 @@
 
 // Jenkinsfile for the Frontend Application
 pipeline {
-    // *** FIX: Define a single, top-level agent. ***
-    // This ensures all stages share the same workspace, which is critical for
-    // passing artifacts (like the 'dist' folder) from one stage to the next.
+    // Define a top-level agent as 'none'. This ensures all stages share the same
+    // workspace, which is critical for passing artifacts (like the 'dist' folder)
+    // from one stage to the next. Each stage will define its own environment.
     agent {
-        // 'none' tells Jenkins not to allocate a default agent, as each
-        // stage will define its own Docker container environment.
         none
     }
 
@@ -38,10 +36,11 @@ pipeline {
     stages {
         // Stage 1: Checkout code once at the beginning.
         stage('Checkout') {
-            // This stage runs on the main Jenkins node.
-            agent any
+            // This stage runs on any available Jenkins agent.
+            agent { any } // *** FIX: Corrected syntax from 'agent any' to 'agent { any }' ***
             steps {
                 echo "CoreCICD :: Checkout : Cleaning workspace and checking out source code..."
+                // Clean the workspace before checkout to ensure a fresh start.
                 cleanWs()
                 checkout scm
             }
@@ -54,7 +53,7 @@ pipeline {
                 docker { image 'node:16-slim' }
             }
             environment {
-                // Set the npm cache to a writable directory within the workspace.
+                // Set the npm cache to a writable directory within the workspace to prevent permission errors.
                 NPM_CONFIG_CACHE = "frontend/npm-cache"
             }
             steps {
